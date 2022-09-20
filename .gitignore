@@ -1,0 +1,7 @@
+/target
+*/*.gtf
+*/*.gff
+*/*.fna
+*/*.fa
+*/*.fasta
+*/*.zip
