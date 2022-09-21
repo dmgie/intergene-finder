@@ -84,7 +84,7 @@ fn write(depths: Vec<DepthInfo>, filename: &str, stdout: bool) {
 }
 
 fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) {
-    // Adds the name of the region to the depth file
+    // Adds the name of the region to the depth file, based on the bed file
     let mut idx = 0;
     for i in 0..depths.len() {
         if depths[i].basenumber < bed_regions[idx].end {
