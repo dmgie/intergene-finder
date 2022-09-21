@@ -33,6 +33,7 @@ It also assumes that both the bed file and the depth file are sorted by start po
                 .value_name("depth")
                 .help("Depth file from \"samtools depth\" command to add names to")
                 .takes_value(true)
+                .multiple(true)
                 .required(true),
         )
         .arg(
@@ -54,15 +55,52 @@ It also assumes that both the bed file and the depth file are sorted by start po
         )
         .get_matches();
     let bedfile = matches.value_of("bedfile").unwrap();
-    let depthfile = matches.value_of("depth").unwrap();
+    let depthfile = matches.values_of("depth").unwrap().collect::<Vec<&str>>();
+
+    // Read bed regions once, so if there are more than one depth file to look at, no need to read the bed file again
     let bed_regions: Vec<BedRegion> = read_bed(bedfile);
-    let mut depths: Vec<DepthInfo> = read_depths(depthfile);
-    add_name_to_depth(&mut depths, &bed_regions);
-    if let Some(output) = matches.value_of("output") {
-        write(depths, output, false);
+
+    if matches.value_of("depth").unwrap().len() > 1 {
+        // If more than one file given, automatically output to different files
+        for i in depthfile {
+            println!("Reading and manipulating depth file {}", i);
+            let mut depths: Vec<DepthInfo> = read_depths(i);
+            add_name_to_depth(&mut depths, &bed_regions);
+            let mut writer = BufWriter::new(File::create(&format!("{}.depthn", i)).unwrap());
+            for d in depths {
+                writeln!(
+                    writer,
+                    "{}\t{}\t{}\t{}",
+                    d.chromosome, d.basenumber, d.reads, d.name
+                )
+                .unwrap();
+            }
+            println!("Wrote {} to file {}.depthn", i, i);
+        }
     } else {
-        println!("No output file defined, writing to stdout");
-        write(depths, "", true);
+        // Only one depth file to look at and write/print, stdout or outputfile if given
+        let mut depths = read_depths(depthfile[0]);
+        add_name_to_depth(&mut depths, &bed_regions);
+        if matches.is_present("output") {
+            let o = matches.value_of("output").unwrap();
+            let mut writer = BufWriter::new(File::create(&format!("{}.depthn", o)).unwrap());
+            for i in depths {
+                writeln!(
+                    writer,
+                    "{}\t{}\t{}\t{}",
+                    i.chromosome, i.basenumber, i.reads, i.name
+                )
+                .unwrap();
+            }
+        } else {
+            println!("No output file defined, writing to stdout");
+            for i in depths {
+                println!(
+                    "{}\t{}\t{}\t{}",
+                    i.chromosome, i.basenumber, i.reads, i.name
+                );
+            }
+        }
     }
 }
 
