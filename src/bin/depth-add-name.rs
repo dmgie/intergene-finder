@@ -55,14 +55,14 @@ It also assumes that both the bed file and the depth file are sorted by start po
         )
         .get_matches();
     let bedfile = matches.value_of("bedfile").unwrap();
-    let depthfile = matches.values_of("depth").unwrap().collect::<Vec<&str>>();
+    let depthfiles = matches.values_of("depth").unwrap().collect::<Vec<&str>>();
 
     // Read bed regions once, so if there are more than one depth file to look at, no need to read the bed file again
     let bed_regions: Vec<BedRegion> = read_bed(bedfile);
 
     if matches.value_of("depth").unwrap().len() > 1 {
         // If more than one file given, automatically output to different files
-        for i in depthfile {
+        for i in depthfiles {
             println!("Reading and manipulating depth file {}", i);
             let mut depths: Vec<DepthInfo> = read_depths(i);
             add_name_to_depth(&mut depths, &bed_regions);
@@ -79,7 +79,7 @@ It also assumes that both the bed file and the depth file are sorted by start po
         }
     } else {
         // Only one depth file to look at and write/print, stdout or outputfile if given
-        let mut depths = read_depths(depthfile[0]);
+        let mut depths = read_depths(depthfiles[0]);
         add_name_to_depth(&mut depths, &bed_regions);
         if matches.is_present("output") {
             let o = matches.value_of("output").unwrap();
