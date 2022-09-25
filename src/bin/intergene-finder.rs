@@ -122,14 +122,19 @@ fn main() {
         .unwrap();
 
     //
-    let intergenic_regions: Vec<(i32, i32)> =
-        get_intergenic_regions(&gff_entries, refseqlen, min_distance);
-    let intergenic_entries =
-        create_intergenic_entries(intergenic_regions, gff_entries[0].seqid.clone());
+    let pos_intergenic_regions: Vec<(i32, i32)> =
+        get_intergenic_regions(&gff_entries, refseqlen, min_distance, "+");
+    let pos_intergenic_entries =
+        create_intergenic_entries(pos_intergenic_regions, gff_entries[0].seqid.clone(), "+");
+    let neg_intergenic_regions: Vec<(i32, i32)> =
+        get_intergenic_regions(&gff_entries, refseqlen, min_distance, "-");
+    let neg_intergenic_entries =
+        create_intergenic_entries(neg_intergenic_regions, gff_entries[0].seqid.clone(), "-");
 
     // Merge intergenic and gff entries and sort them
     let mut merged_entries: Vec<GffEntry> = gff_entries.to_vec();
-    merged_entries.extend(intergenic_entries);
+    merged_entries.extend(pos_intergenic_entries);
+    merged_entries.extend(neg_intergenic_entries);
     merged_entries.sort_by(|a, b| a.start.cmp(&b.start));
 
     // Extract sequences from fasta file and add them to the entries
@@ -165,7 +170,11 @@ fn main() {
 
 /// For each intergenic region create a GFFEntry that has the same format as the other entries
 /// mainly start, end, type, and attributes i.e (ID,Name,locus_tag) defined
-fn create_intergenic_entries(intergenic_regions: Vec<(i32, i32)>, seqid: String) -> Vec<GffEntry> {
+fn create_intergenic_entries(
+    intergenic_regions: Vec<(i32, i32)>,
+    seqid: String,
+    strand: &str,
+) -> Vec<GffEntry> {
     let mut igr_counter = 0;
     let intergenic_entries: Vec<GffEntry> = intergenic_regions
         .iter()
@@ -180,11 +189,12 @@ fn create_intergenic_entries(intergenic_regions: Vec<(i32, i32)>, seqid: String)
                 start: *start,
                 end: *end,
                 score: ".".to_string(),
-                strand: ".".to_string(),
+                strand: strand.to_string(),
                 phase: ".".to_string(),
                 attributes: format!(
-                    "ID=IGR-{};Name=INTERGENIC_{};locus_tag=INTERGENIC_{}",
-                    igr_counter, igr_counter, igr_counter
+                    "ID=IGR_{a}-S{strand};Name=INTERGENIC_{a};locus_tag=INTERGENIC_{a}",
+                    a = igr_counter,
+                    strand = strand
                 )
                 .to_string(),
                 seq,
@@ -196,7 +206,12 @@ fn create_intergenic_entries(intergenic_regions: Vec<(i32, i32)>, seqid: String)
 
 /// Given a (vector of) GFF entry struct(s) return a the start and end of the intergenic regions
 /// as a vector of tuples
-fn get_intergenic_regions(gff: &Vec<GffEntry>, end: i32, buffer: i32) -> Vec<(i32, i32)> {
+fn get_intergenic_regions(
+    gff: &Vec<GffEntry>,
+    end: i32,
+    buffer: i32,
+    strand: &str,
+) -> Vec<(i32, i32)> {
     // We obtain all the intergenic regions by going through a vector of GFFEntries
     let mut regions: Vec<(i32, i32)> = Vec::new();
 
@@ -207,12 +222,16 @@ fn get_intergenic_regions(gff: &Vec<GffEntry>, end: i32, buffer: i32) -> Vec<(i3
         _ => 0,
     };
 
-    for entry in gff {
+    let filtered = gff
+        .iter()
+        .filter(|x| x.strand == strand)
+        .collect::<Vec<&GffEntry>>();
+
+    for entry in filtered {
         // skip if type is any of:
         if entry.r#type == "region"
             || entry.r#type == "sequence_feature"
             || entry.r#type == "start_codon"
-            || entry.r#type == "stop_codon"
         {
             continue;
         }
