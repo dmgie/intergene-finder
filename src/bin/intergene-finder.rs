@@ -150,6 +150,7 @@ fn main() {
     // Get intergenic regions (start, end) in a vector
     let intergenic_regions = get_intergenic_regions(&gff_entries, refseqlen);
     let mut igr_counter = 0;
+
     // For each intergenic region create a GFFEntry that has the same format as the other entries
     // mainly start, end, type, and attributes i.e (ID,Name,locus_tag) defined
     let intergenic_entries: Vec<GffEntry> = intergenic_regions
@@ -195,7 +196,55 @@ fn main() {
 
     // Creat a GFF file from the merged entries
     write_gff_from_vec(&gff.header, &merged_entries, "reference+intergenic.gff");
-    write_intergenic_to_file(&merged_entries, "intergenic.fasta")
+    write_intergenic_to_file(&merged_entries, "intergenic.fasta");
+    write_genic_to_file(&merged_entries, "genic.fasta");
+
+    // write_fasta_to_file("CDS", &merged_entries, "cds.fasta");
+}
+
+// More generic fasta write than the others, might
+fn write_fasta_to_file(entry_type: &str, gff_entries: &Vec<GffEntry>, filename: &str) {
+    let mut to_write = String::new();
+    // For entries matching type, write their sequences to a file
+    for entry in gff_entries {
+        if entry.r#type == entry_type {
+            to_write.push_str(&format!(
+                ">{} length: {}\n",
+                entry.attributes,
+                entry.seq.len()
+            ));
+            let mut seq = entry.seq.clone();
+            while seq.len() > 80 {
+                to_write.push_str(&format!("{}\n", &seq[..80]));
+                seq = seq[80..].to_string();
+            }
+            to_write.push_str(&format!("{}\n", &seq));
+        }
+        // to_write.push_str(&format!(">{}\n{}\n", entry.attributes, entry.seq));
+    }
+    fs::write(filename, to_write).expect("Unable to write file");
+}
+
+fn write_genic_to_file(gff_entries: &Vec<GffEntry>, filename: &str) {
+    let mut to_write = String::new();
+    // For entries matching type, write their sequences to a file
+    for entry in gff_entries {
+        if entry.r#type == "gene" {
+            to_write.push_str(&format!(
+                ">{} length: {}\n",
+                entry.attributes,
+                entry.seq.len()
+            ));
+            let mut seq = entry.seq.clone();
+            while seq.len() > 80 {
+                to_write.push_str(&format!("{}\n", &seq[..80]));
+                seq = seq[80..].to_string();
+            }
+            to_write.push_str(&format!("{}\n", &seq));
+        }
+        // to_write.push_str(&format!(">{}\n{}\n", entry.attributes, entry.seq));
+    }
+    fs::write(filename, to_write).expect("Unable to write file");
 }
 
 // write intergenic regions as fasta

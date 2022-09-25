@@ -4,5 +4,6 @@
 */*.fna
 */*.fa
 */*.fasta
+*/old2/*
 */*.zip
 */testfiles/*
