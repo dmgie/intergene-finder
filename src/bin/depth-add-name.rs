@@ -54,6 +54,7 @@ It also assumes that both the bed file and the depth file are sorted by start po
                 .takes_value(true),
         )
         .get_matches();
+
     let bedfile = matches.value_of("bedfile").unwrap();
     let depthfiles = matches.values_of("depth").unwrap().collect::<Vec<&str>>();
 
