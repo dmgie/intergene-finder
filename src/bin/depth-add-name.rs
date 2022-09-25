@@ -158,6 +158,7 @@ fn read_bed(bedfile: &str) -> Vec<BedRegion> {
     bed_regions
 }
 
+/// Read a .depth file from the output of the samtools depth command
 fn read_depths(filename: &str) -> Vec<DepthInfo> {
     let content = File::open(filename).expect("Unable to open file");
     let mut depths: Vec<DepthInfo> = Vec::new();
