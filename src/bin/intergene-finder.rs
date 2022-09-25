@@ -3,6 +3,8 @@ use clap::{App, Arg};
 use std::fs;
 // use std::fs::File;
 // use std::io::{self, prelude::*, BufReader, BufWriter};
+//
+// TODO: Strand-specific intergene finding. This is because the start/stop are switchedin location dependingon the strand
 
 #[derive(Debug)]
 enum GFFErrors {
@@ -118,6 +120,8 @@ fn main() {
         .unwrap()
         .parse::<i32>()
         .unwrap();
+
+    //
     let intergenic_regions: Vec<(i32, i32)> =
         get_intergenic_regions(&gff_entries, refseqlen, min_distance);
     let intergenic_entries =
@@ -167,12 +171,7 @@ fn create_intergenic_entries(intergenic_regions: Vec<(i32, i32)>, seqid: String)
         .iter()
         .map(|(start, end)| {
             igr_counter += 1;
-            // For getting the seq for all intergenic regions
             let seq = String::from("");
-            // let seq = refseq
-            //     .get(*start as usize..*end as usize)
-            //     .unwrap()
-            //     .to_string();
             GffEntry {
                 // same seqid as the rest
                 seqid: seqid.clone(),
@@ -193,6 +192,51 @@ fn create_intergenic_entries(intergenic_regions: Vec<(i32, i32)>, seqid: String)
         })
         .collect();
     intergenic_entries
+}
+
+/// Given a (vector of) GFF entry struct(s) return a the start and end of the intergenic regions
+/// as a vector of tuples
+fn get_intergenic_regions(gff: &Vec<GffEntry>, end: i32, buffer: i32) -> Vec<(i32, i32)> {
+    // We obtain all the intergenic regions by going through a vector of GFFEntries
+    let mut regions: Vec<(i32, i32)> = Vec::new();
+
+    // should it start with 0 or 1? 0 means it includes (0,1) as intergenic range, if 1 is the first pos
+    // if 1 is the first
+    let mut last_end = match gff.first().unwrap().start {
+        1 => 1,
+        _ => 0,
+    };
+
+    for entry in gff {
+        // skip if type is any of:
+        if entry.r#type == "region"
+            || entry.r#type == "sequence_feature"
+            || entry.r#type == "start_codon"
+            || entry.r#type == "stop_codon"
+        {
+            continue;
+        }
+        // If it happens right after stop codon, automatically update last end to be + 1
+        if entry.start == last_end + 1 {
+            last_end = last_end + 1;
+        }
+        // if next entry is less than (i.e within) Xnt of previous end/entry, do not mark it as an intergenic
+        // if entry.start < last_end + 40 {
+        //     continue;
+        // }
+
+        if entry.start > last_end + buffer {
+            regions.push((last_end + 1, entry.start - 1)); // NOTE: Remove if include end of previous seq
+                                                           // regions.push((last_end + 1, entry.start - 1));
+        }
+        last_end = entry.end;
+    }
+    // Fill in the last if the end of the gff hasnt reached the end refernece sequence
+    if last_end < end {
+        regions.push((last_end, end)); //NOTE: Remove if include end of previous seq
+                                       // regions.push((last_end + 1, end));
+    }
+    regions
 }
 
 // Given a vector of GFF entries, add the sequence to each entry
@@ -285,52 +329,6 @@ fn parse_gff(file: &str) -> Result<GFF, GFFErrors> {
     }
     Ok(GFF { header, entries })
 }
-
-/// Given a (vector of) GFF entry struct(s) return a the start and end of the intergenic regions
-/// as a vector of tuples
-fn get_intergenic_regions(gff: &Vec<GffEntry>, end: i32, buffer: i32) -> Vec<(i32, i32)> {
-    // We obtain all the intergenic regions by going through a vector of GFFEntries
-    let mut regions: Vec<(i32, i32)> = Vec::new();
-
-    // should it start with 0 or 1? 0 means it includes (0,1) as intergenic range, if 1 is the first pos
-    // if 1 is the first
-    let mut last_end = match gff.first().unwrap().start {
-        1 => 1,
-        _ => 0,
-    };
-
-    for entry in gff {
-        // skip if type is any of:
-        if entry.r#type == "region"
-            || entry.r#type == "sequence_feature"
-            || entry.r#type == "start_codon"
-            || entry.r#type == "stop_codon"
-        {
-            continue;
-        }
-        // If it happens right after stop codon, automatically update last end to be + 1
-        if entry.start == last_end + 1 {
-            last_end = last_end + 1;
-        }
-        // if next entry is less than (i.e within) Xnt of previous end/entry, do not mark it as an intergenic
-        // if entry.start < last_end + 40 {
-        //     continue;
-        // }
-
-        if entry.start > last_end + buffer {
-            regions.push((last_end + 1, entry.start - 1)); // NOTE: Remove if include end of previous seq
-                                                           // regions.push((last_end + 1, entry.start - 1));
-        }
-        last_end = entry.end;
-    }
-    // Fill in the last if the end of the gff hasnt reached the end refernece sequence
-    if last_end < end {
-        regions.push((last_end, end)); //NOTE: Remove if include end of previous seq
-                                       // regions.push((last_end + 1, end));
-    }
-    regions
-}
-
 /// More generic fasta writer
 fn write_fasta_to_file(entry_type: &str, gff_entries: &Vec<GffEntry>, filename: &str) {
     let mut to_write = String::new();
