@@ -26,8 +26,8 @@ struct GffEntry {
     seqid: String,
     source: String,
     r#type: String,
-    start: i32,
-    end: i32,
+    start: i64,
+    end: i64,
     score: String,
     strand: String,
     phase: String,
@@ -91,6 +91,15 @@ fn main() {
                 .value_delimiter(',')
         )
         .arg(
+            Arg::with_name("strandedness")
+                .short('s')
+                .long("strandedness")
+                .value_name("strandedness")
+                .help("Flag whether to keep strandedness in mind or not when calculating intergenic regions")
+                .required(false)
+                .takes_value(false)
+        )
+        .arg(
             Arg::with_name("min_distance")
                 .short('d')
                 .long("min_distance")
@@ -104,13 +113,11 @@ fn main() {
 
     let refgff = parse_gff(matches.value_of("input").expect("Expect input file"))
         .expect("Error parsing GFF file");
-
     // TODO: Change it somehow to look at if the fasta file is given, if not, don't extract sequences
     let reffasta =
         parse_fasta(matches.value_of("fasta").unwrap()).expect("Error parsing FASTA file");
-
     let refseq = &reffasta[0].seq; // Get the first sequence from the fasta file i.e the only
-    let refseqlen = refseq.len() as i32;
+    let refseqlen = refseq.len() as i64;
 
     let gff_entries = refgff.entries;
 
@@ -118,24 +125,29 @@ fn main() {
     let min_distance = matches
         .value_of("min_distance")
         .unwrap()
-        .parse::<i32>()
+        .parse::<i64>()
         .unwrap();
 
-    //
-    let pos_intergenic_regions: Vec<(i32, i32)> =
-        get_intergenic_regions(&gff_entries, refseqlen, min_distance, "+");
-    let pos_intergenic_entries =
-        create_intergenic_entries(pos_intergenic_regions, gff_entries[0].seqid.clone(), "+");
-    let neg_intergenic_regions: Vec<(i32, i32)> =
-        get_intergenic_regions(&gff_entries, refseqlen, min_distance, "-");
-    let neg_intergenic_entries =
-        create_intergenic_entries(neg_intergenic_regions, gff_entries[0].seqid.clone(), "-");
+    // Add intergenic entries for each strand separately to the GFF entries
+    let mut merged_entries: Vec<GffEntry> = gff_entries.to_vec();
+    if matches.is_present("strandedness") {
+        for strand in ["+", "-"] {
+            let intergenic_region: Vec<(i64, i64)> =
+                get_intergenic_regions(&gff_entries, refseqlen, min_distance, strand);
+            let intergenic_entries =
+                create_intergenic_entries(intergenic_region, gff_entries[0].seqid.clone(), strand);
+            merged_entries.extend(intergenic_entries);
+        }
+    } else {
+        let intergenic_region: Vec<(i64, i64)> =
+            get_intergenic_regions(&gff_entries, refseqlen, min_distance, ".");
+        let intergenic_entries =
+            create_intergenic_entries(intergenic_region, gff_entries[0].seqid.clone(), ".");
+        merged_entries.extend(intergenic_entries);
+    }
 
     // Merge intergenic and gff entries and sort them
-    let mut merged_entries: Vec<GffEntry> = gff_entries.to_vec();
-    merged_entries.extend(pos_intergenic_entries);
-    merged_entries.extend(neg_intergenic_entries);
-    merged_entries.sort_by(|a, b| a.start.cmp(&b.start));
+    merged_entries.sort_by(|a, b| a.end.cmp(&b.end));
 
     // Extract sequences from fasta file and add them to the entries
     let merged_with_seq = add_seq_to_entries(&mut merged_entries, refseq);
@@ -171,7 +183,7 @@ fn main() {
 /// For each intergenic region create a GFFEntry that has the same format as the other entries
 /// mainly start, end, type, and attributes i.e (ID,Name,locus_tag) defined
 fn create_intergenic_entries(
-    intergenic_regions: Vec<(i32, i32)>,
+    intergenic_regions: Vec<(i64, i64)>,
     seqid: String,
     strand: &str,
 ) -> Vec<GffEntry> {
@@ -192,7 +204,7 @@ fn create_intergenic_entries(
                 strand: strand.to_string(),
                 phase: ".".to_string(),
                 attributes: format!(
-                    "ID=IGR_{a}-S{strand};Name=INTERGENIC_{a};locus_tag=INTERGENIC_{a}",
+                    "ID=IGR_{a}({strand});Name=INTERGENIC_{a}({strand});locus_tag=INTERGENIC_{a}({strand})",
                     a = igr_counter,
                     strand = strand
                 )
@@ -208,12 +220,12 @@ fn create_intergenic_entries(
 /// as a vector of tuples
 fn get_intergenic_regions(
     gff: &Vec<GffEntry>,
-    end: i32,
-    buffer: i32,
+    end: i64,
+    buffer: i64,
     strand: &str,
-) -> Vec<(i32, i32)> {
+) -> Vec<(i64, i64)> {
     // We obtain all the intergenic regions by going through a vector of GFFEntries
-    let mut regions: Vec<(i32, i32)> = Vec::new();
+    let mut regions: Vec<(i64, i64)> = Vec::new();
 
     // should it start with 0 or 1? 0 means it includes (0,1) as intergenic range, if 1 is the first pos
     // if 1 is the first
@@ -222,17 +234,22 @@ fn get_intergenic_regions(
         _ => 0,
     };
 
-    let filtered = gff
-        .iter()
-        .filter(|x| x.strand == strand)
-        .collect::<Vec<&GffEntry>>();
+    // Filter if stranded and given, otherwise just go through all the entries i.e non-strand-specific IGRs
+    let filtered = match strand {
+        "+" => gff
+            .iter()
+            .filter(|x| x.strand == "+" || x.strand == ".")
+            .collect::<Vec<&GffEntry>>(),
+        "-" => gff
+            .iter()
+            .filter(|x| x.strand == "-" || x.strand == ".")
+            .collect::<Vec<&GffEntry>>(),
+        _ => gff.iter().collect::<Vec<&GffEntry>>(),
+    };
 
     for entry in filtered {
         // skip if type is any of:
-        if entry.r#type == "region"
-            || entry.r#type == "sequence_feature"
-            || entry.r#type == "start_codon"
-        {
+        if entry.r#type == "region" || entry.r#type == "sequence_feature" {
             continue;
         }
         // If it happens right after stop codon, automatically update last end to be + 1
@@ -240,11 +257,12 @@ fn get_intergenic_regions(
             last_end = last_end + 1;
         }
         // if next entry is less than (i.e within) Xnt of previous end/entry, do not mark it as an intergenic
-        // if entry.start < last_end + 40 {
-        //     continue;
-        // }
+        if entry.start < last_end + buffer {
+            continue;
+        }
 
-        if entry.start > last_end + buffer {
+        // if entry.start > last_end + buffer {
+        if entry.start > last_end {
             regions.push((last_end + 1, entry.start - 1)); // NOTE: Remove if include end of previous seq
                                                            // regions.push((last_end + 1, entry.start - 1));
         }
@@ -334,8 +352,8 @@ fn parse_gff(file: &str) -> Result<GFF, GFFErrors> {
                 seqid: parts[0].to_string(),
                 source: parts[1].to_string(),
                 r#type: parts[2].to_string(),
-                start: parts[3].parse::<i32>().unwrap(),
-                end: parts[4].parse::<i32>().unwrap(),
+                start: parts[3].parse::<i64>().unwrap(),
+                end: parts[4].parse::<i64>().unwrap(),
                 score: parts[5].to_string(),
                 strand: parts[6].to_string(),
                 phase: parts[7].to_string(),
