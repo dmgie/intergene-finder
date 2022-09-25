@@ -1,6 +1,7 @@
 // Read file
 use clap::{App, Arg};
 use std::fs;
+use std::io::Error;
 // use std::fs::File;
 // use std::io::{self, prelude::*, BufReader, BufWriter};
 //
@@ -167,7 +168,8 @@ fn main() {
     let merged_with_seq = add_seq_to_entries(&mut merged_entries, refseq);
 
     // Write new gff file, fasta files
-    write_gff_from_vec(&refgff.header, &merged_with_seq, "reference+intergenic.gff");
+    write_gff_from_vec(&refgff.header, &merged_with_seq, "reference+intergenic.gff")
+        .expect("Unable to create the GFF file");
 
     // Write fasta files depending on the types given
     // go through the entries and collect all the type fields
@@ -188,7 +190,8 @@ fn main() {
                 entry_type,
                 &merged_with_seq,
                 &format!("{out}/{ttype}.fasta", out = output, ttype = entry_type),
-            );
+            )
+            .expect("Unable to write fasta file(s)");
         } else {
             println!(
                 "\x1b[91mERROR: Invalid entry type:\x1b[0m \x1b[94m{t}\x1b[0m. Not creating a fasta file for {t}. Please check if it was spelled correctly.",
@@ -385,7 +388,11 @@ fn parse_gff(file: &str) -> Result<GFF, GFFErrors> {
     Ok(GFF { header, entries })
 }
 /// More generic fasta writer
-fn write_fasta_to_file(entry_type: &str, gff_entries: &Vec<GffEntry>, filename: &str) {
+fn write_fasta_to_file(
+    entry_type: &str,
+    gff_entries: &Vec<GffEntry>,
+    filename: &str,
+) -> Result<(), Error> {
     let mut to_write = String::new();
     // For entries matching type, write their sequences to a file
     for entry in gff_entries {
@@ -404,11 +411,16 @@ fn write_fasta_to_file(entry_type: &str, gff_entries: &Vec<GffEntry>, filename: 
         }
         // to_write.push_str(&format!(">{}\n{}\n", entry.attributes, entry.seq));
     }
-    fs::write(filename, to_write).expect("Unable to write file");
+    fs::write(filename, to_write)?;
+    Ok(())
 }
 
 // Create a new GFF file that includes the (intergenic) regions that we added
-fn write_gff_from_vec(header: &String, gff_entries: &Vec<GffEntry>, fname: &str) {
+fn write_gff_from_vec(
+    header: &String,
+    gff_entries: &Vec<GffEntry>,
+    fname: &str,
+) -> Result<(), Error> {
     // Recreate a gff file from the header, entries to include and write it to a file
     let mut gff_file = String::new();
     gff_file.push_str(&format!("{}\n", header));
@@ -426,5 +438,6 @@ fn write_gff_from_vec(header: &String, gff_entries: &Vec<GffEntry>, fname: &str)
             entry.attributes,
         ));
     }
-    fs::write(fname, gff_file).unwrap();
+    fs::write(fname, gff_file)?;
+    Ok(())
 }

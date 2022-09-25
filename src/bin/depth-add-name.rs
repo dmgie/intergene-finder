@@ -5,11 +5,17 @@ use std::io::{self, prelude::*, BufReader, BufWriter};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 struct BedRegion {
-    // chromosome: String,
-    // start: u32,
+    chromosome: String,
+    start: i64,
     end: i64,
     name: String,
 }
+
+struct OutputType {
+    file: BufWriter<File>,
+    stdout: bool,
+}
+
 #[derive(Debug)]
 struct DepthInfo {
     chromosome: String,
@@ -124,6 +130,7 @@ fn write(depths: Vec<DepthInfo>, filename: &str, stdout: bool) {
 
 fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) {
     // Adds the name of the region to the depth file, based on the bed file
+
     let mut idx = 0;
     for i in 0..depths.len() {
         if depths[i].basenumber < bed_regions[idx].end {
@@ -137,23 +144,39 @@ fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) 
     }
 }
 
+/// Read a .bed file that contains choromome, start, end and name of region
 fn read_bed(bedfile: &str) -> Vec<BedRegion> {
     let content = File::open(bedfile).expect("Unable to open file");
     let reader = BufReader::new(content);
     let mut bed_regions: Vec<BedRegion> = Vec::new();
     for line in reader.lines() {
         let line = line.unwrap();
-        let mut split_line = line.split("\t");
-        let chromosome = split_line.next().unwrap().to_string();
-        let start = split_line.next().unwrap().parse::<i64>().unwrap();
-        let end = split_line.next().unwrap().parse::<i64>().unwrap();
-        let name = split_line.next().unwrap().to_string();
-        bed_regions.push(BedRegion {
-            // chromosome,
-            // start,
-            end,
-            name,
-        });
+        let mut split_line = line.split("\t").collect::<Vec<&str>>();
+        match split_line.len() {
+            4 => {
+                let chromosome = split_line[0].to_string();
+                let start = split_line[1]
+                    .parse::<i64>()
+                    .expect(&format!("Unable to parse start value {}", line));
+                let end = split_line[2]
+                    .parse::<i64>()
+                    .expect(&format!("Unable to parse end value {}", line));
+                let name = split_line[3].to_string();
+                bed_regions.push(BedRegion {
+                    chromosome,
+                    start,
+                    end,
+                    name,
+                });
+            }
+            _ => {
+                println!(
+                    "Error in bed file; incorrectly structured at line: {}. ",
+                    line
+                );
+                std::process::exit(1);
+            }
+        }
     }
     bed_regions
 }
