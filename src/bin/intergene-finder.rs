@@ -109,13 +109,27 @@ fn main() {
                 .default_missing_value("3")
                 .takes_value(true)
         )
+        .arg(
+            Arg::with_name("output")
+                .short('o')
+                .long("output")
+                .value_name("output")
+                .help("The output folder, if not given, will be in the same folder as the input file")
+                .takes_value(true)
+                .required(false)
+                .default_value(".")
+        )
         .get_matches();
 
-    let refgff = parse_gff(matches.value_of("input").expect("Expect input file"))
-        .expect("Error parsing GFF file");
+    let refgff = parse_gff(
+        matches
+            .get_one::<String>("input")
+            .expect("Expect input file"),
+    )
+    .expect("Error parsing GFF file");
     // TODO: Change it somehow to look at if the fasta file is given, if not, don't extract sequences
     let reffasta =
-        parse_fasta(matches.value_of("fasta").unwrap()).expect("Error parsing FASTA file");
+        parse_fasta(matches.get_one::<String>("fasta").unwrap()).expect("Error parsing FASTA file");
     let refseq = &reffasta[0].seq; // Get the first sequence from the fasta file i.e the only
     let refseqlen = refseq.len() as i64;
 
@@ -123,7 +137,7 @@ fn main() {
 
     // Get intergenic regions (start, end) in a vector
     let min_distance = matches
-        .value_of("min_distance")
+        .get_one::<String>("min_distance")
         .unwrap()
         .parse::<i64>()
         .unwrap();
@@ -163,13 +177,17 @@ fn main() {
             valid_types.push(entry.r#type.clone());
         }
     }
+
     // Only write fasta files for valid types
-    for entry_type in matches.values_of("types").unwrap() {
+    for entry_type in matches.get_many::<String>("types").expect("No types given") {
         if valid_types.contains(&entry_type.to_string()) {
+            let output = matches
+                .get_one::<String>("output")
+                .expect("No output path given");
             write_fasta_to_file(
                 entry_type,
                 &merged_with_seq,
-                &format!("{}.fasta", entry_type),
+                &format!("{out}/{ttype}.fasta", out = output, ttype = entry_type),
             );
         } else {
             println!(
@@ -208,7 +226,7 @@ fn create_intergenic_entries(
                     a = igr_counter,
                     strand = strand
                 )
-                .to_string(),
+                    .to_string(),
                 seq,
             }
         })

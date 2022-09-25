@@ -7,14 +7,14 @@ use std::io::{self, prelude::*, BufReader, BufWriter};
 struct BedRegion {
     // chromosome: String,
     // start: u32,
-    end: u32,
+    end: i64,
     name: String,
 }
 #[derive(Debug)]
 struct DepthInfo {
     chromosome: String,
-    basenumber: u32,
-    reads: u32,
+    basenumber: i64,
+    reads: i64,
     name: String,
 }
 
@@ -145,8 +145,8 @@ fn read_bed(bedfile: &str) -> Vec<BedRegion> {
         let line = line.unwrap();
         let mut split_line = line.split("\t");
         let chromosome = split_line.next().unwrap().to_string();
-        let start = split_line.next().unwrap().parse::<u32>().unwrap();
-        let end = split_line.next().unwrap().parse::<u32>().unwrap();
+        let start = split_line.next().unwrap().parse::<i64>().unwrap();
+        let end = split_line.next().unwrap().parse::<i64>().unwrap();
         let name = split_line.next().unwrap().to_string();
         bed_regions.push(BedRegion {
             // chromosome,
@@ -166,8 +166,8 @@ fn read_depths(filename: &str) -> Vec<DepthInfo> {
         let line = line.unwrap();
         let mut split_line = line.split("\t");
         let chromosome = split_line.next().unwrap();
-        let position = split_line.next().unwrap().parse::<u32>().unwrap();
-        let depth = split_line.next().unwrap().parse::<u32>().unwrap();
+        let position = split_line.next().unwrap().parse::<i64>().unwrap();
+        let depth = split_line.next().unwrap().parse::<i64>().unwrap();
         depths.push(DepthInfo {
             chromosome: chromosome.to_string(),
             basenumber: position,
