@@ -10,9 +10,6 @@ use std::io::Error;
 #[derive(Debug)]
 enum GFFErrors {
     FileNotFound,
-    // FileParseError,
-    // InvalidExtension,
-    // InvalidGFFEntry,
     GFFColumnMismatch,
 }
 
