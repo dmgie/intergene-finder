@@ -74,7 +74,7 @@ It also assumes that both the bed file and the depth file are sorted by start po
         for i in depthfiles {
             println!("Reading and manipulating depth file {}", i);
             let mut depths: Vec<DepthInfo> = read_depths(i);
-            add_name_to_depth(&mut depths, &bed_regions);
+            add_name_to_depth(depths.as_mut(), &bed_regions);
             let mut writer = BufWriter::new(File::create(&format!("{}.depthn", i)).unwrap());
             for d in depths {
                 writeln!(
@@ -135,24 +135,24 @@ fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) 
     // Adds the name of the region to the depth file, based on the bed file
 
     let mut idx = 0;
-    for i in 0..depths.len() {
-        if depths[i].basenumber < bed_regions[idx].end {
-            depths[i].name = bed_regions[idx].name.clone();
+    for depth in depths {
+        if depth.basenumber <= bed_regions[idx].end {
+            depth.name = bed_regions[idx].name.clone();
         } else {
             if idx < bed_regions.len() - 1 {
                 idx += 1;
             }
-            depths[i].name = bed_regions[idx].name.clone();
+            depth.name = bed_regions[idx].name.clone();
         }
     }
-    // for depth in &mut depths {
-    //     if depth.basenumber < bed_regions[idx].end {
-    //         depth.name = bed_regions[idx].name.clone();
+    // for i in 0..depths.len() {
+    //     if depths[i].basenumber < bed_regions[idx].end {
+    //         depths[i].name = bed_regions[idx].name.clone();
     //     } else {
     //         if idx < bed_regions.len() - 1 {
     //             idx += 1;
     //         }
-    //         depth.name = bed_regions[idx].name.clone();
+    //         depths[i].name = bed_regions[idx].name.clone();
     //     }
     // }
 }
