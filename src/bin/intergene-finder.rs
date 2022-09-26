@@ -1,5 +1,6 @@
 // Read file
 use clap::{App, Arg};
+use std::fmt::Write as _;
 use std::fs;
 use std::io::Error;
 // use std::fs::File;
@@ -39,7 +40,7 @@ impl GffEntry {
     }
 }
 
-struct GFF {
+struct Gff {
     header: String,
     entries: Vec<GffEntry>,
 }
@@ -168,18 +169,11 @@ fn main() {
     write_gff_from_vec(&refgff.header, &merged_with_seq, "reference+intergenic.gff")
         .expect("Unable to create the GFF file");
 
-    // Write fasta files depending on the types given
-    // go through the entries and collect all the type fields
-    let mut valid_types: Vec<String> = Vec::new();
-    for entry in &merged_with_seq {
-        if !valid_types.contains(&entry.r#type) {
-            valid_types.push(entry.r#type.clone());
-        }
-    }
+    let valid_types: Vec<String> = get_valid_types(&merged_with_seq);
 
     // Only write fasta files for valid types
     for entry_type in matches.get_many::<String>("types").expect("No types given") {
-        if valid_types.contains(&entry_type.to_string()) {
+        if valid_types.contains(entry_type) {
             let output = matches
                 .get_one::<String>("output")
                 .expect("No output path given");
@@ -196,6 +190,17 @@ fn main() {
             );
         }
     }
+}
+
+/// Parses a GFF file and returns valid entry types i.e gene,CDS,transcript etc.
+fn get_valid_types(gff_entries: &Vec<GffEntry>) -> Vec<String> {
+    let mut valid_types: Vec<String> = Vec::new();
+    for entry in gff_entries {
+        if !valid_types.contains(&entry.r#type) {
+            valid_types.push(entry.r#type.clone());
+        }
+    }
+    valid_types
 }
 
 /// For each intergenic region create a GFFEntry that has the same format as the other entries
@@ -224,9 +229,7 @@ fn create_intergenic_entries(
                 attributes: format!(
                     "ID=IGR_{a}({strand});Name=INTERGENIC_{a}({strand});locus_tag=INTERGENIC_{a}({strand})",
                     a = igr_counter,
-                    strand = strand
-                )
-                    .to_string(),
+                    strand = strand),
                 seq,
             }
         })
@@ -237,7 +240,7 @@ fn create_intergenic_entries(
 /// Given a (vector of) GFF entry struct(s) return a the start and end of the intergenic regions
 /// as a vector of tuples
 fn get_intergenic_regions(
-    gff: &Vec<GffEntry>,
+    gff: &[GffEntry],
     end: i64,
     buffer: i64,
     strand: &str,
@@ -272,7 +275,7 @@ fn get_intergenic_regions(
         }
         // If it happens right after stop codon, automatically update last end to be + 1
         if entry.start == last_end + 1 {
-            last_end = last_end + 1;
+            last_end += 1;
         }
         // if next entry is less than (i.e within) Xnt of previous end/entry, do not mark it as an intergenic
         if entry.start < last_end + buffer {
@@ -295,7 +298,7 @@ fn get_intergenic_regions(
 }
 
 // Given a vector of GFF entries, add the sequence to each entry
-fn add_seq_to_entries(entries: &mut Vec<GffEntry>, refseq: &String) -> Vec<GffEntry> {
+fn add_seq_to_entries(entries: &mut Vec<GffEntry>, refseq: &str) -> Vec<GffEntry> {
     let mut entries_with_seq: Vec<GffEntry> = Vec::new();
     for entry in entries {
         let seq = refseq
@@ -319,7 +322,7 @@ fn parse_fasta(file: &str) -> Result<Vec<Seq>, FastaErrors> {
     let mut seq = String::new();
     for line in file.lines() {
         let line = line.to_string();
-        if line.starts_with(">") {
+        if line.starts_with('>') {
             if !header.is_empty() {
                 entries.push(Seq { header, seq });
             }
@@ -333,7 +336,7 @@ fn parse_fasta(file: &str) -> Result<Vec<Seq>, FastaErrors> {
     Ok(entries)
 }
 
-fn parse_gff(file: &str) -> Result<GFF, GFFErrors> {
+fn parse_gff(file: &str) -> Result<Gff, GFFErrors> {
     // Take a filename and parse it into a GFF struct
 
     let file = match fs::read_to_string(file) {
@@ -345,8 +348,9 @@ fn parse_gff(file: &str) -> Result<GFF, GFFErrors> {
     let mut header = String::new();
     for line in file.lines() {
         let line = line.to_string();
-        if line.starts_with("#") {
-            header.push_str(&format!("{}\n", &line));
+        if line.starts_with('#') {
+            let _ = writeln!(header, "{}", &line);
+            // header.push_str(&format!("{}\n", &line));
         } else {
             break;
         }
@@ -357,11 +361,11 @@ fn parse_gff(file: &str) -> Result<GFF, GFFErrors> {
     for line in file.lines() {
         let line = line.to_string();
         // Skip comments & header lines
-        if line.starts_with("#") {
+        if line.starts_with('#') {
             continue;
         }
 
-        let parts: Vec<&str> = line.split("\t").collect();
+        let parts: Vec<&str> = line.split('\t').collect();
 
         // Check if the line has the correct number of columns, create entry if so
         // error if not
@@ -382,7 +386,7 @@ fn parse_gff(file: &str) -> Result<GFF, GFFErrors> {
         };
         entries.push(gffrecord);
     }
-    Ok(GFF { header, entries })
+    Ok(Gff { header, entries })
 }
 /// More generic fasta writer
 fn write_fasta_to_file(
@@ -394,17 +398,20 @@ fn write_fasta_to_file(
     // For entries matching type, write their sequences to a file
     for entry in gff_entries {
         if entry.r#type == entry_type {
-            to_write.push_str(&format!(
-                ">{} length: {}\n",
+            let _ = writeln!(
+                to_write,
+                ">{} length: {}",
                 entry.attributes,
                 entry.seq.len()
-            ));
+            );
             let mut seq = entry.seq.clone();
             while seq.len() > 80 {
-                to_write.push_str(&format!("{}\n", &seq[..80]));
+                let _ = writeln!(to_write, "{}", &seq[..80]);
+                // to_write.push_str(&format!("{}\n", &seq[..80]));
                 seq = seq[80..].to_string();
             }
-            to_write.push_str(&format!("{}\n", &seq));
+            // to_write.push_str(&format!("{}\n", &seq));
+            let _ = writeln!(to_write, "{}", &seq);
         }
         // to_write.push_str(&format!(">{}\n{}\n", entry.attributes, entry.seq));
     }
@@ -420,10 +427,12 @@ fn write_gff_from_vec(
 ) -> Result<(), Error> {
     // Recreate a gff file from the header, entries to include and write it to a file
     let mut gff_file = String::new();
-    gff_file.push_str(&format!("{}\n", header));
+    let _ = writeln!(gff_file, "{}\n", header);
+    // gff_file.push_str(&format!("{}\n", header));
     for entry in gff_entries {
-        gff_file.push_str(&format!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+        let _ = writeln!(
+            gff_file,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             entry.seqid,
             entry.source,
             entry.r#type,
@@ -433,7 +442,7 @@ fn write_gff_from_vec(
             entry.strand,
             entry.phase,
             entry.attributes,
-        ));
+        );
     }
     fs::write(fname, gff_file)?;
     Ok(())

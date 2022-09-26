@@ -1,5 +1,7 @@
 #![allow(unused)]
 use clap::{App, Arg};
+use std::boxed;
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, prelude::*, BufReader, BufWriter};
 
@@ -114,11 +116,12 @@ It also assumes that both the bed file and the depth file are sorted by start po
 fn write(depths: Vec<DepthInfo>, filename: &str, stdout: bool) {
     // Writes the depth file along with the name column
     let mut output = String::new();
-    for i in 0..depths.len() {
-        output.push_str(&format!(
+    for depth in &depths {
+        let _ = writeln!(
+            output,
             "{}\t{}\t{}\t{}\n",
-            depths[i].chromosome, depths[i].basenumber, depths[i].reads, depths[i].name,
-        ));
+            depth.chromosome, depth.basenumber, depth.reads, depth.name
+        );
     }
     if stdout {
         println!("{}", output);
@@ -142,6 +145,16 @@ fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) 
             depths[i].name = bed_regions[idx].name.clone();
         }
     }
+    // for depth in &mut depths {
+    //     if depth.basenumber < bed_regions[idx].end {
+    //         depth.name = bed_regions[idx].name.clone();
+    //     } else {
+    //         if idx < bed_regions.len() - 1 {
+    //             idx += 1;
+    //         }
+    //         depth.name = bed_regions[idx].name.clone();
+    //     }
+    // }
 }
 
 /// Read a .bed file that contains choromome, start, end and name of region
@@ -151,16 +164,16 @@ fn read_bed(bedfile: &str) -> Vec<BedRegion> {
     let mut bed_regions: Vec<BedRegion> = Vec::new();
     for line in reader.lines() {
         let line = line.unwrap();
-        let mut split_line = line.split("\t").collect::<Vec<&str>>();
+        let mut split_line = line.split('\t').collect::<Vec<&str>>();
         match split_line.len() {
             4 => {
                 let chromosome = split_line[0].to_string();
                 let start = split_line[1]
                     .parse::<i64>()
-                    .expect(&format!("Unable to parse start value {}", line));
+                    .unwrap_or_else(|_| panic!("Unable to parse start value {}", line));
                 let end = split_line[2]
                     .parse::<i64>()
-                    .expect(&format!("Unable to parse end value {}", line));
+                    .unwrap_or_else(|_| panic!("Unable to parse end value {}", line));
                 let name = split_line[3].to_string();
                 bed_regions.push(BedRegion {
                     chromosome,
@@ -188,7 +201,7 @@ fn read_depths(filename: &str) -> Vec<DepthInfo> {
     let reader = BufReader::new(content);
     for line in reader.lines() {
         let line = line.unwrap();
-        let mut split_line = line.split("\t");
+        let mut split_line = line.split('\t');
         let chromosome = split_line.next().unwrap();
         let position = split_line.next().unwrap().parse::<i64>().unwrap();
         let depth = split_line.next().unwrap().parse::<i64>().unwrap();
