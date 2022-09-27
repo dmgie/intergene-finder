@@ -83,16 +83,7 @@ It also assumes that both the bed file and the depth file are sorted by start po
         for i in depthfiles {
             let mut depths: Vec<DepthInfo> = read_depths(i);
             add_name_to_depth(depths.as_mut(), &bed_regions);
-            let mut writer = BufWriter::new(File::create(&format!("{}.depthn", i)).unwrap());
-            for d in depths {
-                writeln!(
-                    writer,
-                    "{}\t{}\t{}\t{}",
-                    d.chromosome, d.basenumber, d.reads, d.name
-                )
-                .unwrap();
-            }
-            println!("Wrote {} to file {}.depthn", i, i);
+            write_depthn(&depths, i, false);
         }
     } else {
         // Only one depth file to look at and write/print, stdout or outputfile if given
@@ -100,44 +91,33 @@ It also assumes that both the bed file and the depth file are sorted by start po
         add_name_to_depth(&mut depths, &bed_regions);
         if matches.is_present("output") {
             let o = matches.value_of("output").unwrap();
-            let mut writer = BufWriter::new(File::create(&format!("{}.depthn", o)).unwrap());
-            for d in depths {
-                writeln!(
-                    writer,
-                    "{}\t{}\t{}\t{}",
-                    d.chromosome, d.basenumber, d.reads, d.name
-                )
-                .unwrap();
-            }
+            write_depthn(&depths, o, false);
         } else {
-            println!("No output file defined, writing to stdout");
-            for i in depths {
-                println!(
-                    "{}\t{}\t{}\t{}",
-                    i.chromosome, i.basenumber, i.reads, i.name
-                );
-            }
+            write_depthn(&depths, "", true);
         }
     }
 }
 
-// fn write(depths: Vec<DepthInfo>, filename: &str, stdout: bool) {
-//     // Writes the depth file along with the name column
-//     let mut output = String::new();
-//     for depth in &depths {
-//         let _ = writeln!(
-//             output,
-//             "{}\t{}\t{}\t{}\n",
-//             depth.chromosome, depth.basenumber, depth.reads, depth.name
-//         );
-//     }
-//     if stdout {
-//         println!("{}", output);
-//     } else {
-//         let mut file = File::create(filename).unwrap();
-//         file.write_all(output.as_bytes()).unwrap();
-//     }
-// }
+fn write_depthn(depths: &Vec<DepthInfo>, filename: &str, stdout: bool) {
+    // Writes the depth file along with the name column
+    let mut writer = BufWriter::new(File::create(&format!("{}.depthn", filename)).unwrap());
+    for d in depths {
+        if stdout {
+            println!(
+                "{}\t{}\t{}\t{}",
+                d.chromosome, d.basenumber, d.reads, d.name
+            );
+        } else {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}",
+                d.chromosome, d.basenumber, d.reads, d.name
+            )
+            .unwrap();
+        }
+    }
+    println!("Wrote {f} to file {f}.depthn", f = filename);
+}
 
 /// Adds the name of the region to the depth file, based on the bed file
 fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) {
