@@ -1,11 +1,13 @@
 #![allow(unused)]
 use clap::{App, Arg};
 use indicatif::ProgressBar;
+use std::boxed;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, prelude::*, BufReader, BufWriter};
-use std::time::Duration;
 
+// TODO: Make a nice progress loading bar to show how far through the vec it is
+//       or have ... that increase every second to show it is still running
 // TODO: Optimise modifying every vec element
 // NOTE: This could be done via:
 //       Get length of each bed region,
@@ -81,6 +83,7 @@ It also assumes that both the bed file and the depth file are sorted by start po
     if matches.value_of("depth").unwrap().len() > 1 {
         // If more than one file given, automatically output to different files
         for i in depthfiles {
+            println!("Reading and manipulating depth file {}", i);
             let mut depths: Vec<DepthInfo> = read_depths(i);
             add_name_to_depth(depths.as_mut(), &bed_regions);
             let mut writer = BufWriter::new(File::create(&format!("{}.depthn", i)).unwrap());
@@ -101,11 +104,11 @@ It also assumes that both the bed file and the depth file are sorted by start po
         if matches.is_present("output") {
             let o = matches.value_of("output").unwrap();
             let mut writer = BufWriter::new(File::create(&format!("{}.depthn", o)).unwrap());
-            for d in depths {
+            for i in depths {
                 writeln!(
                     writer,
                     "{}\t{}\t{}\t{}",
-                    d.chromosome, d.basenumber, d.reads, d.name
+                    i.chromosome, i.basenumber, i.reads, i.name
                 )
                 .unwrap();
             }
@@ -121,32 +124,31 @@ It also assumes that both the bed file and the depth file are sorted by start po
     }
 }
 
-// fn write(depths: Vec<DepthInfo>, filename: &str, stdout: bool) {
-//     // Writes the depth file along with the name column
-//     let mut output = String::new();
-//     for depth in &depths {
-//         let _ = writeln!(
-//             output,
-//             "{}\t{}\t{}\t{}\n",
-//             depth.chromosome, depth.basenumber, depth.reads, depth.name
-//         );
-//     }
-//     if stdout {
-//         println!("{}", output);
-//     } else {
-//         let mut file = File::create(filename).unwrap();
-//         file.write_all(output.as_bytes()).unwrap();
-//     }
-// }
+fn write(depths: Vec<DepthInfo>, filename: &str, stdout: bool) {
+    // Writes the depth file along with the name column
+    let mut output = String::new();
+    for depth in &depths {
+        let _ = writeln!(
+            output,
+            "{}\t{}\t{}\t{}\n",
+            depth.chromosome, depth.basenumber, depth.reads, depth.name
+        );
+    }
+    if stdout {
+        println!("{}", output);
+    } else {
+        let mut file = File::create(filename).unwrap();
+        file.write_all(output.as_bytes()).unwrap();
+    }
+}
 
-/// Adds the name of the region to the depth file, based on the bed file
 fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) {
-    let bar = ProgressBar::new_spinner();
-    bar.enable_steady_tick(Duration::from_millis(10));
-    bar.set_message("Modifying Depth files...");
+    // Adds the name of the region to the depth file, based on the bed file
 
     let mut idx = 0;
+    let bar = ProgressBar::new(depths.len() as u64);
     for depth in depths {
+        bar.inc(1);
         if depth.basenumber <= bed_regions[idx].end {
             depth.name = bed_regions[idx].name.clone();
         } else {
@@ -201,9 +203,6 @@ fn read_depths(filename: &str) -> Vec<DepthInfo> {
     let content = File::open(filename).expect("Unable to open file");
     let mut depths: Vec<DepthInfo> = Vec::new();
     let reader = BufReader::new(content);
-    let bar = ProgressBar::new_spinner();
-    bar.enable_steady_tick(Duration::from_millis(10));
-    bar.set_message("Reading Depth files...");
     for line in reader.lines() {
         let line = line.unwrap();
         let mut split_line = line.split('\t');
@@ -217,6 +216,5 @@ fn read_depths(filename: &str) -> Vec<DepthInfo> {
             name: "".to_string(),
         });
     }
-    // bar.finish();
     depths
 }

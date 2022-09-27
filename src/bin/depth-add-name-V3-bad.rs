@@ -1,11 +1,12 @@
 #![allow(unused)]
 use clap::{App, Arg};
-use indicatif::ProgressBar;
+use std::boxed;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, prelude::*, BufReader, BufWriter};
-use std::time::Duration;
 
+// TODO: Make a nice progress loading bar to show how far through the vec it is
+//       or have ... that increase every second to show it is still running
 // TODO: Optimise modifying every vec element
 // NOTE: This could be done via:
 //       Get length of each bed region,
@@ -20,6 +21,7 @@ struct BedRegion {
     start: i64,
     end: i64,
     name: String,
+    length: i64,
 }
 
 struct OutputType {
@@ -81,8 +83,9 @@ It also assumes that both the bed file and the depth file are sorted by start po
     if matches.value_of("depth").unwrap().len() > 1 {
         // If more than one file given, automatically output to different files
         for i in depthfiles {
+            println!("Reading and manipulating depth file {}", i);
             let mut depths: Vec<DepthInfo> = read_depths(i);
-            add_name_to_depth(depths.as_mut(), &bed_regions);
+            add_name_to_depths(depths.as_mut(), &bed_regions);
             let mut writer = BufWriter::new(File::create(&format!("{}.depthn", i)).unwrap());
             for d in depths {
                 writeln!(
@@ -97,15 +100,15 @@ It also assumes that both the bed file and the depth file are sorted by start po
     } else {
         // Only one depth file to look at and write/print, stdout or outputfile if given
         let mut depths = read_depths(depthfiles[0]);
-        add_name_to_depth(&mut depths, &bed_regions);
+        add_name_to_depths(&mut depths, &bed_regions);
         if matches.is_present("output") {
             let o = matches.value_of("output").unwrap();
             let mut writer = BufWriter::new(File::create(&format!("{}.depthn", o)).unwrap());
-            for d in depths {
+            for i in depths {
                 writeln!(
                     writer,
                     "{}\t{}\t{}\t{}",
-                    d.chromosome, d.basenumber, d.reads, d.name
+                    i.chromosome, i.basenumber, i.reads, i.name
                 )
                 .unwrap();
             }
@@ -121,42 +124,44 @@ It also assumes that both the bed file and the depth file are sorted by start po
     }
 }
 
-// fn write(depths: Vec<DepthInfo>, filename: &str, stdout: bool) {
-//     // Writes the depth file along with the name column
-//     let mut output = String::new();
-//     for depth in &depths {
-//         let _ = writeln!(
-//             output,
-//             "{}\t{}\t{}\t{}\n",
-//             depth.chromosome, depth.basenumber, depth.reads, depth.name
-//         );
-//     }
-//     if stdout {
-//         println!("{}", output);
-//     } else {
-//         let mut file = File::create(filename).unwrap();
-//         file.write_all(output.as_bytes()).unwrap();
-//     }
-// }
-
-/// Adds the name of the region to the depth file, based on the bed file
-fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) {
-    let bar = ProgressBar::new_spinner();
-    bar.enable_steady_tick(Duration::from_millis(10));
-    bar.set_message("Modifying Depth files...");
-
-    let mut idx = 0;
-    for depth in depths {
-        if depth.basenumber <= bed_regions[idx].end {
-            depth.name = bed_regions[idx].name.clone();
-        } else {
-            if idx < bed_regions.len() - 1 {
-                idx += 1;
-            }
-            depth.name = bed_regions[idx].name.clone();
-        }
+fn write(depths: Vec<DepthInfo>, filename: &str, stdout: bool) {
+    // Writes the depth file along with the name column
+    let mut output = String::new();
+    for depth in &depths {
+        let _ = writeln!(
+            output,
+            "{}\t{}\t{}\t{}\n",
+            depth.chromosome, depth.basenumber, depth.reads, depth.name
+        );
     }
-    bar.finish();
+    if stdout {
+        println!("{}", output);
+    } else {
+        let mut file = File::create(filename).unwrap();
+        file.write_all(output.as_bytes()).unwrap();
+    }
+}
+
+fn add_name_to_depths(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) {
+    // Adds the name of the region to the depth file, based on the bed file
+
+    let mut depth_index = 0;
+    let mut prev_depth_index = 0;
+    let mut bed_idx = 0;
+
+    // Take the amount of elements depending on length of current bed index
+    // https://stackoverflow.com/questions/71718210/what-is-the-idiomatic-way-to-assign-one-value-to-a-slice-in-rust
+    while depth_index < depths.len() {
+        let slice_length = bed_regions[bed_idx].length;
+        let to_name = &bed_regions[bed_idx].name;
+
+        depth_index += slice_length as usize;
+        depths[prev_depth_index..depth_index]
+            .iter_mut()
+            .for_each(|d| d.name = to_name.to_string());
+        prev_depth_index = slice_length as usize + 1;
+        bed_idx += 1
+    }
 }
 
 /// Read a .bed file that contains choromome, start, end and name of region
@@ -182,6 +187,7 @@ fn read_bed(bedfile: &str) -> Vec<BedRegion> {
                     start,
                     end,
                     name,
+                    length: end - start,
                 });
             }
             _ => {
@@ -201,9 +207,6 @@ fn read_depths(filename: &str) -> Vec<DepthInfo> {
     let content = File::open(filename).expect("Unable to open file");
     let mut depths: Vec<DepthInfo> = Vec::new();
     let reader = BufReader::new(content);
-    let bar = ProgressBar::new_spinner();
-    bar.enable_steady_tick(Duration::from_millis(10));
-    bar.set_message("Reading Depth files...");
     for line in reader.lines() {
         let line = line.unwrap();
         let mut split_line = line.split('\t');
@@ -217,6 +220,5 @@ fn read_depths(filename: &str) -> Vec<DepthInfo> {
             name: "".to_string(),
         });
     }
-    // bar.finish();
     depths
 }
