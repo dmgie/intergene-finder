@@ -1,7 +1,6 @@
 #![allow(unused)]
 use clap::{App, Arg};
 use indicatif::ProgressBar;
-use rayon::prelude::*;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, prelude::*, BufReader, BufWriter};
@@ -17,7 +16,7 @@ use std::time::Duration;
 //       add length to var, then start from that +1 until the next region length,
 //       assign all of these to the next index of the bed names
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 struct BedRegion {
     chromosome: String,
     start: i64,
@@ -79,14 +78,6 @@ It also assumes that both the bed file and the depth file are sorted by start po
                 .help("Either define the output file name or the output will be written to stdout")
                 .takes_value(true),
         )
-        .arg(
-            Arg::with_name("threads")
-                .short('t')
-                .long("threads")
-                .value_name("threads")
-                .help("How many threads to use for the program")
-                .takes_value(true),
-        )
         .get_matches();
 
     let bedfile = matches.value_of("bedfile").unwrap();
@@ -99,49 +90,17 @@ It also assumes that both the bed file and the depth file are sorted by start po
     // Read bed regions once, so if there are more than one depth file to look at, no need to read the bed file again
     let bed_regions: Vec<BedRegion> = read_bed(bedfile);
 
-    // Multithread configuration
-    let n_threads: usize = matches
-        .get_one("threads")
-        .unwrap_or(&"3".to_string())
-        .parse::<usize>()
-        .unwrap();
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(n_threads.to_owned() as usize)
-        .build_global()
-        .unwrap();
-
     if depthfiles.len() > 1 {
         // If more than one file given, automatically output to different files
-        // for i in depthfiles {
-        //     let mut depths: Vec<DepthInfo> = read_depths(&i);
-        //     add_name_to_depth(depths.as_mut(), &bed_regions);
-        //     write_depthn(&depths, &i, false);
-        // }
-
-        // NOTE: Multithreaded below. BUT this creates a new thread for each depth file, which is not ideal
-        // TODO: Make it so that it creates a threadpool and then adds the depth files to the threadpool
-        //       Maybe use rayon? threadpool? something?
-        // let mut children = vec![];
-        // for i in depthfiles {
-        //     let bed_regions = bed_regions.clone();
-        //     children.push(thread::spawn(move || {
-        //         let mut depths: Vec<DepthInfo> = read_depths(&i);
-        //         let _ = add_name_to_depth(depths.as_mut(), &bed_regions);
-        //         println!("Finished {}", i);
-        //         write_depthn(&depths, &i, false);
-        //     }));
-        // }
-        // for child in children {
-        //     let _ = child.join();
-        // }
-        //
-
-        // NOTE: This is the multithreaded version using rayon
-        depthfiles.par_iter().for_each(|i| {
-            let mut depths: Vec<DepthInfo> = read_depths(i);
-            add_name_to_depth(depths.as_mut(), &bed_regions);
-            write_depthn(&depths, i, false);
+        println!("More than one");
+        let handle = thread::spawn(move || {
+            for i in depthfiles {
+                let mut depths: Vec<DepthInfo> = read_depths(&i);
+                add_name_to_depth(depths.as_mut(), &bed_regions);
+                write_depthn(&depths, &i, false);
+            }
         });
+        handle.join().unwrap();
     } else {
         // Only one depth file to look at and write/print, stdout or outputfile if given
         let mut depths = read_depths(&depthfiles[0]);
