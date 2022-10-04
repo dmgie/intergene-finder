@@ -112,30 +112,6 @@ It also assumes that both the bed file and the depth file are sorted by start po
 
     if depthfiles.len() > 1 {
         // If more than one file given, automatically output to different files
-        // for i in depthfiles {
-        //     let mut depths: Vec<DepthInfo> = read_depths(&i);
-        //     add_name_to_depth(depths.as_mut(), &bed_regions);
-        //     write_depthn(&depths, &i, false);
-        // }
-
-        // NOTE: Multithreaded below. BUT this creates a new thread for each depth file, which is not ideal
-        // TODO: Make it so that it creates a threadpool and then adds the depth files to the threadpool
-        //       Maybe use rayon? threadpool? something?
-        // let mut children = vec![];
-        // for i in depthfiles {
-        //     let bed_regions = bed_regions.clone();
-        //     children.push(thread::spawn(move || {
-        //         let mut depths: Vec<DepthInfo> = read_depths(&i);
-        //         let _ = add_name_to_depth(depths.as_mut(), &bed_regions);
-        //         println!("Finished {}", i);
-        //         write_depthn(&depths, &i, false);
-        //     }));
-        // }
-        // for child in children {
-        //     let _ = child.join();
-        // }
-        //
-
         // NOTE: This is the multithreaded version using rayon
         depthfiles.par_iter().for_each(|i| {
             let mut depths: Vec<DepthInfo> = read_depths(i);
@@ -155,15 +131,23 @@ It also assumes that both the bed file and the depth file are sorted by start po
     }
 }
 
+/// Writes the depth info to either stdout or a file
 fn write_depthn(depths: &Vec<DepthInfo>, filename: &str, stdout: bool) {
     // Writes the depth file along with the name column
     let mut writer = BufWriter::new(File::create(&format!("{}.depthn", filename)).unwrap());
+    let mut stdout_writer = BufWriter::new(std::io::stdout());
     for d in depths {
         if stdout {
-            println!(
+            // println!(
+            //     "{}\t{}\t{}\t{}",
+            //     d.chromosome, d.basenumber, d.reads, d.name
+            // );
+            writeln!(
+                stdout_writer,
                 "{}\t{}\t{}\t{}",
                 d.chromosome, d.basenumber, d.reads, d.name
-            );
+            )
+            .unwrap();
         } else {
             writeln!(
                 writer,
@@ -177,11 +161,12 @@ fn write_depthn(depths: &Vec<DepthInfo>, filename: &str, stdout: bool) {
 }
 
 /// Adds the name of the region to the depth file, based on the bed file
+/// input: vector of depth info, vector of bed regions
+/// output: mutated original vector of depth info with the name of the region added
 fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) {
     let bar = ProgressBar::new_spinner();
     bar.enable_steady_tick(Duration::from_millis(10));
     bar.set_message("Modifying Depth files...");
-
     let mut idx = 0;
     for depth in depths {
         if depth.basenumber <= bed_regions[idx].end {
@@ -196,7 +181,7 @@ fn add_name_to_depth(depths: &mut Vec<DepthInfo>, bed_regions: &Vec<BedRegion>) 
     bar.finish();
 }
 
-/// Read a .bed file that contains choromome, start, end and name of region
+/// Read a .bed file that contains choromome, start, end and name of region. Should only be read once
 fn read_bed(bedfile: &str) -> Vec<BedRegion> {
     let content = File::open(bedfile).expect("Unable to open file");
     let reader = BufReader::new(content);

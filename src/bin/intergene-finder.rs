@@ -1,5 +1,7 @@
 // Read file
+#![allow(unused)]
 use clap::{App, Arg};
+use rayon::prelude::*;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::Error;
@@ -78,6 +80,7 @@ fn main() {
                 .value_name("fasta")
                 .help("The genome sequence as a fasta file from which to extract sequence from")
                 .takes_value(true)
+                .required(false)
         )
         .arg(
             Arg::with_name("types")
@@ -88,6 +91,7 @@ fn main() {
                 .takes_value(true)
                 .multiple(true)
                 .value_delimiter(',')
+                .default_value("intergenic")
         )
         .arg(
             Arg::with_name("strandedness")
@@ -126,11 +130,6 @@ fn main() {
             .expect("Expect input file"),
     )
     .expect("Error parsing GFF file");
-    // TODO: Change it somehow to look at if the fasta file is given, if not, don't extract sequences
-    let reffasta =
-        parse_fasta(matches.get_one::<String>("fasta").unwrap()).expect("Error parsing FASTA file");
-    let refseq = &reffasta[0].seq; // Get the first sequence from the fasta file i.e the only
-    let refseqlen = refseq.len() as i64;
 
     let gff_entries = refgff.entries;
 
@@ -140,6 +139,22 @@ fn main() {
         .unwrap()
         .parse::<i64>()
         .unwrap();
+
+    // TODO: Change it somehow to look at if the fasta file is given, if not, don't extract sequences
+    let mut refseqlen = 0;
+    let mut refseq = String::new();
+    match matches.get_one::<String>("fasta") {
+        Some(fasta) => {
+            let reffasta = parse_fasta(fasta).expect("Error parsing FASTA file");
+            refseq = reffasta[0].seq.to_string();
+            refseqlen = refseq.len() as i64;
+        }
+        None => {
+            println!("No FASTA file given, unable to determine length of sequence -> not extracting sequences");
+            println!("Exiting ...");
+            std::process::exit(0);
+        }
+    }
 
     // Add intergenic entries for each strand separately to the GFF entries
     let mut merged_entries: Vec<GffEntry> = gff_entries.to_vec();
@@ -163,7 +178,7 @@ fn main() {
     merged_entries.sort_by(|a, b| a.end.cmp(&b.end));
 
     // Extract sequences from fasta file and add them to the entries
-    let merged_with_seq = add_seq_to_entries(&mut merged_entries, refseq);
+    let merged_with_seq = add_seq_to_entries(&mut merged_entries, &refseq);
 
     // Write new gff file, fasta files
     write_gff_from_vec(&refgff.header, &merged_with_seq, "reference+intergenic.gff")
@@ -210,11 +225,10 @@ fn create_intergenic_entries(
     seqid: String,
     strand: &str,
 ) -> Vec<GffEntry> {
-    let mut igr_counter = 0;
     let intergenic_entries: Vec<GffEntry> = intergenic_regions
         .iter()
-        .map(|(start, end)| {
-            igr_counter += 1;
+        .enumerate()
+        .map(|(idx, (start,end))| {
             let seq = String::from("");
             GffEntry {
                 // same seqid as the rest
@@ -228,7 +242,7 @@ fn create_intergenic_entries(
                 phase: ".".to_string(),
                 attributes: format!(
                     "ID=IGR_{a}({strand});Name=INTERGENIC_{a}({strand});locus_tag=INTERGENIC_{a}({strand})",
-                    a = igr_counter,
+                    a = idx + 1,
                     strand = strand),
                 seq,
             }
